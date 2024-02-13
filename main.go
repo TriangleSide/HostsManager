@@ -11,8 +11,11 @@ import (
 	"unicode"
 )
 
-// TODO: make this OS and OS version aware.
-const hostFilePath = "/etc/hosts"
+const (
+	// TODO: make this OS and OS version aware.
+	hostFilePath            = "/etc/hosts"
+	customHostsRelativePath = "./custom.hosts"
+)
 
 const (
 	startManagedHosts = "# DO NOT MODIFY MANUALLY. Managed hosts start.\n"
@@ -93,6 +96,27 @@ func downloadHostSource(source HostFileSource) string {
 	return string(data)
 }
 
+func fileExists(filename string) bool {
+	info, err := os.Stat(filename)
+	if os.IsNotExist(err) {
+		return false
+	}
+	return !info.IsDir()
+}
+
+func getLocalHostFile() string {
+	if !fileExists(customHostsRelativePath) {
+		fmt.Println("Failed to find the file \"" + customHostsRelativePath + "\"")
+		return ""
+	}
+	content, err := os.ReadFile(customHostsRelativePath)
+	if err != nil {
+		fmt.Println("Failed to read the file \"" + customHostsRelativePath + "\"")
+		os.Exit(1)
+	}
+	return string(content)
+}
+
 func main() {
 	fmt.Println("Welcome to the hosts manager.")
 
@@ -135,14 +159,6 @@ func main() {
 	}
 	fmt.Println("")
 
-	fmt.Println("Ensuring a least one source is selected.")
-	if len(hostsToDownload) == 0 {
-		fmt.Println("No host source selected.")
-		os.Exit(1)
-	}
-	fmt.Println("")
-
-	fmt.Println("Downloading hosts files.")
 	rawHostFiles := make(map[string]string)
 	for _, source := range hostsToDownload {
 		fmt.Println("Downloading source for '" + source.Name + "'")
@@ -150,7 +166,14 @@ func main() {
 	}
 	fmt.Println("")
 
-	fmt.Println("Processing host files.")
+	fmt.Println("Checking for local hosts additions.")
+	localHostFile := getLocalHostFile()
+	if len(localHostFile) > 0 {
+		rawHostFiles["local"] = localHostFile
+	}
+	fmt.Println("")
+
+	fmt.Println("Processing selected hosts files.")
 	hosts := make([]string, 0)
 	for sourceName, rawHostFile := range rawHostFiles {
 		fmt.Printf("Processing %s.\n", sourceName)
@@ -181,6 +204,10 @@ func main() {
 		if _, ok := ignoreListInDownloadedFiles[host]; !ok {
 			uniqueHosts[host] = true
 		}
+	}
+	if len(uniqueHosts) == 0 {
+		fmt.Println("No hosts to add to the host file.")
+		os.Exit(1)
 	}
 	fmt.Println("")
 
